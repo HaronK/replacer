@@ -1,0 +1,12 @@
+[package]
+name = "replacer"
+version = "0.1.0"
+authors = ["Oleg Khryptul <okreptul@yahoo.com>"]
+edition = "2018"
+
+[dependencies]
+regex = "1"
+structopt = { version = "0.2", default-features = false }
+walkdir = "2"
+failure = "0.1"
+failure_derive = "0.1"
