@@ -1,10 +1,10 @@
 use failure::{Error, ResultExt};
+use rayon::prelude::*;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 use walkdir::WalkDir;
-use rayon::prelude::*;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -49,7 +49,9 @@ fn patch_dir<P: AsRef<Path>>(path: P, re: &Regex, replacement: &String) -> Resul
         }
     }
     //TODO: collect errors
-    files.par_iter().map(|file| patch_file(Path::new(file), re, replacement).context(format!("File: {:?}", file)));
+    files.par_iter().map(|file| {
+        patch_file(Path::new(file), re, replacement).context(format!("File: {:?}", file))
+    });
     Ok(())
 }
 
