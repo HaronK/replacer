@@ -22,7 +22,7 @@ struct Opt {
     input: Option<PathBuf>,
 }
 
-fn patch_file(path: &Path, re: &Regex, replacement: &String) -> Result<(), Error> {
+fn patch_file(path: &Path, re: &Regex, replacement: &String) -> Result<usize, Error> {
     let old_bytes = fs::read(path).context(format!("Cannot read from the file"))?;
     let old_text = String::from_utf8_lossy(&old_bytes);
 
@@ -32,11 +32,13 @@ fn patch_file(path: &Path, re: &Regex, replacement: &String) -> Result<(), Error
         fs::write(path, new_text.as_bytes())?;
 
         println!("File changed: {:?}", path);
+
+        return Ok(1);
     }
-    Ok(())
+    Ok(0)
 }
 
-fn patch_dir<P: AsRef<Path>>(path: P, re: &Regex, replacement: &String) -> Result<(), Error> {
+fn patch_dir<P: AsRef<Path>>(path: P, re: &Regex, replacement: &String) -> Result<usize, Error> {
     // NOTE: walkdir doesn't support rayon so we just collect file paths and then use rayon to process them in parallel
     let mut files = vec![];
     for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
@@ -48,32 +50,47 @@ fn patch_dir<P: AsRef<Path>>(path: P, re: &Regex, replacement: &String) -> Resul
             //     .context(format!("File: {:?}", entry.path()))?;
         }
     }
-    //TODO: collect errors
-    files.par_iter().map(|file| {
-        patch_file(Path::new(file), re, replacement).context(format!("File: {:?}", file))
-    });
-    Ok(())
+
+    let files_processed = files
+        .par_iter()
+        .map(|file| {
+            patch_file(Path::new(file), re, replacement).context(format!("File: {:?}", file))
+        })
+        .inspect(|result| {
+            if let Err(err) = result {
+                println!("{}", err);
+            }
+        })
+        .filter_map(Result::ok)
+        .sum();
+
+    Ok(files_processed)
 }
 
 fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
 
     let re = Regex::new(&opt.pattern)?;
-    if let Some(path_buf) = opt.input {
+    let files_processed = if let Some(path_buf) = opt.input {
         let path = path_buf.as_path().clone();
         if path.exists() {
             if path.is_file() {
-                patch_file(path, &re, &opt.replacement).context(format!("File: {:?}", path))?;
+                patch_file(path, &re, &opt.replacement).context(format!("File: {:?}", path))?
             } else if path.is_dir() {
-                patch_dir(path, &re, &opt.replacement)?;
+                patch_dir(path, &re, &opt.replacement)?
             } else {
                 eprintln!("Unknown type of the file {:?}", path);
+                0
             }
         } else {
             eprintln!("Path {:?} doesn't exist!", path);
+            0
         }
     } else {
-        patch_dir("./", &re, &opt.replacement)?;
-    }
+        patch_dir("./", &re, &opt.replacement)?
+    };
+
+    println!("Total files: {}", files_processed);
+
     Ok(())
 }
