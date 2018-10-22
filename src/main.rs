@@ -80,22 +80,22 @@ fn patch_file(
     Ok(0)
 }
 
-fn patch_dir<P: AsRef<Path>>(
-    path: P,
-    re: &Regex,
-    replacement: &Option<String>,
-    show_diff: bool,
-) -> Result<usize, Error> {
-    // NOTE: walkdir doesn't support rayon so we just collect file paths and then use rayon to process them in parallel
-    let mut files = vec![];
-    for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+fn collect_files(dir: &str, files: &mut Vec<String>) {
+    for entry in WalkDir::new(dir).into_iter().filter_map(|e| e.ok()) {
         if entry.file_type().is_file() {
             if let Some(path_str) = entry.path().to_str() {
                 files.push(path_str.to_string());
             }
         }
     }
+}
 
+fn process_files(
+    files: &Vec<String>,
+    re: &Regex,
+    replacement: &Option<String>,
+    show_diff: bool,
+) -> Result<usize, Error> {
     let files_processed = files
         .par_iter()
         .map(|file| {
@@ -117,25 +117,27 @@ fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
 
     let re = Regex::new(&opt.pattern)?;
-    let files_processed = if let Some(path_buf) = opt.input {
+    let mut files = vec![];
+    if let Some(path_buf) = opt.input {
         let path = path_buf.as_path().clone();
         if path.exists() {
-            if path.is_file() {
-                patch_file(path, &re, &opt.replacement, opt.show_diff)
-                    .context(format!("File: {:?}", path))?
-            } else if path.is_dir() {
-                patch_dir(path, &re, &opt.replacement, opt.show_diff)?
-            } else {
-                eprintln!("Unknown type of the file {:?}", path);
-                0
+            if let Some(path_str) = path.to_str() {
+                if path.is_file() {
+                    files.push(path_str.to_string());
+                } else if path.is_dir() {
+                    collect_files(path_str, &mut files);
+                } else {
+                    eprintln!("Unknown type of the file {:?}", path);
+                }
             }
         } else {
             eprintln!("Path {:?} doesn't exist!", path);
-            0
         }
     } else {
-        patch_dir("./", &re, &opt.replacement, opt.show_diff)?
+        collect_files("./", &mut files);
     };
+
+    let files_processed = process_files(&files, &re, &opt.replacement, opt.show_diff)?;
 
     if opt.replacement.is_some() {
         println!("Total replaced files: {}", files_processed);
