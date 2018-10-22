@@ -10,3 +10,4 @@ structopt = { version = "0.2", default-features = false }
 walkdir = "2"
 failure = "0.1"
 failure_derive = "0.1"
+rayon = "1.0"
