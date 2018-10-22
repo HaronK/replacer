@@ -11,34 +11,42 @@ use walkdir::WalkDir;
     about = "Replace text in the files using regex pattern.\nSearch in the specified file or in all files of the folder recursively.\nSupports multiline pattern replacement."
 )]
 struct Opt {
-    /// Pattern string (rust regex)
+    /// Pattern string (rust regex).
     #[structopt(parse(from_str))]
     pattern: String,
-    /// Replacement string (rust regex)
-    #[structopt(parse(from_str))]
-    replacement: String,
+    /// Replacement string (rust regex). Do only pattern matching if not specified.
+    #[structopt(short = "r", long = "replace")]
+    replacement: Option<String>,
     /// Input file or starting directory. Searches in the current directory if not specified.
     #[structopt(parse(from_os_str))]
     input: Option<PathBuf>,
 }
 
-fn patch_file(path: &Path, re: &Regex, replacement: &String) -> Result<usize, Error> {
+fn patch_file(path: &Path, re: &Regex, replacement: &Option<String>) -> Result<usize, Error> {
     let old_bytes = fs::read(path).context(format!("Cannot read from the file"))?;
     let old_text = String::from_utf8_lossy(&old_bytes);
 
     if re.is_match(&old_text) {
-        let new_text = re.replace_all(&old_text, replacement.as_str());
+        if let Some(replace_str) = replacement {
+            let new_text = re.replace_all(&old_text, replace_str.as_str());
 
-        fs::write(path, new_text.as_bytes())?;
+            fs::write(path, new_text.as_bytes())?;
 
-        println!("File changed: {:?}", path);
+            println!("File changed: {:?}", path);
+        } else {
+            println!("File matched: {:?}", path);
+        }
 
         return Ok(1);
     }
     Ok(0)
 }
 
-fn patch_dir<P: AsRef<Path>>(path: P, re: &Regex, replacement: &String) -> Result<usize, Error> {
+fn patch_dir<P: AsRef<Path>>(
+    path: P,
+    re: &Regex,
+    replacement: &Option<String>,
+) -> Result<usize, Error> {
     // NOTE: walkdir doesn't support rayon so we just collect file paths and then use rayon to process them in parallel
     let mut files = vec![];
     for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {

@@ -15,7 +15,9 @@ Replace text in files using regex pattern.
         -h, --help       Prints help information
         -V, --version    Prints version information
 
+    OPTIONS:
+        -r, --replace <replacement>    Replacement string (rust regex). Do only pattern matching if not specified.
+
     ARGS:
         <pattern>        Pattern string (rust regex)
-        <replacement>    Replacement string (rust regex)
         <input>          Input file or starting directory. Searches in the current directory if not specified.
