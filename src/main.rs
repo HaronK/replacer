@@ -1,4 +1,7 @@
 use colored::*;
+#[macro_use]
+extern crate failure;
+
 use failure::{Error, ResultExt};
 use rayon::prelude::*;
 use regex::Regex;
@@ -13,12 +16,15 @@ use walkdir::WalkDir;
     about = "Replace text in the files using regex pattern.\nSearch in the specified file or in all files of the folder recursively.\nSupports multiline pattern replacement."
 )]
 struct Opt {
-    /// Pattern string (rust regex).
-    #[structopt(parse(from_str))]
-    pattern: String,
     /// Show replaced or matched lines.
     #[structopt(short = "d", long = "show-diff")]
     show_diff: bool,
+    /// Pattern string for the file name (rust regex).
+    #[structopt(short = "f", long = "file")]
+    file_pattern: Option<String>,
+    /// Pattern string for the text (rust regex).
+    #[structopt(parse(from_str))]
+    text_pattern: String,
     /// Replacement string (rust regex). Do only pattern matching if not specified.
     #[structopt(short = "r", long = "replace")]
     replacement: Option<String>,
@@ -37,17 +43,28 @@ fn print_diff(left: &str, right: &str) {
     }
 }
 
-fn patch_file(
+fn process_file(
     path: &Path,
-    re: &Regex,
+    re_file: &Option<Regex>,
+    re_text: &Regex,
     replacement: &Option<String>,
     show_diff: bool,
 ) -> Result<usize, Error> {
+    if let Some(re) = re_file {
+        if let Some(path_str) = path.to_str() {
+            if !re.is_match(path_str) {
+                return Ok(0);
+            }
+        } else {
+            bail!("Path is not valid: {:?}", path);
+        }
+    }
+
     let old_bytes = fs::read(path).context(format!("Cannot read from the file"))?;
     let old_text = String::from_utf8_lossy(&old_bytes);
 
     if let Some(replace_str) = replacement {
-        let new_text = re.replace_all(&old_text, replace_str.as_str());
+        let new_text = re_text.replace_all(&old_text, replace_str.as_str());
 
         if let Owned(s) = new_text {
             println!("Changes in file: {:?}", path);
@@ -64,7 +81,7 @@ fn patch_file(
         println!("Matches in file: {:?}", path);
 
         let mut matches_count = 0;
-        for pos in re.find_iter(&old_text) {
+        for pos in re_text.find_iter(&old_text) {
             if show_diff {
                 println!("{}", pos.as_str().red());
             }
@@ -92,14 +109,15 @@ fn collect_files(dir: &str, files: &mut Vec<String>) {
 
 fn process_files(
     files: &Vec<String>,
-    re: &Regex,
+    re_file: &Option<Regex>,
+    re_text: &Regex,
     replacement: &Option<String>,
     show_diff: bool,
 ) -> Result<usize, Error> {
     let files_processed = files
         .par_iter()
         .map(|file| {
-            patch_file(Path::new(file), re, replacement, show_diff)
+            process_file(Path::new(file), re_file, re_text, replacement, show_diff)
                 .context(format!("File: {:?}", file))
         })
         .inspect(|result| {
@@ -116,7 +134,6 @@ fn process_files(
 fn main() -> Result<(), Error> {
     let opt = Opt::from_args();
 
-    let re = Regex::new(&opt.pattern)?;
     let mut files = vec![];
     if !opt.inputs.is_empty() {
         for path_buf in opt.inputs {
@@ -139,7 +156,15 @@ fn main() -> Result<(), Error> {
         collect_files("./", &mut files);
     };
 
-    let files_processed = process_files(&files, &re, &opt.replacement, opt.show_diff)?;
+    let re_file = if let Some(p) = opt.file_pattern {
+        Some(Regex::new(&p).context("Can't parse text pattern.")?)
+    } else {
+        None
+    };
+    let re_text = Regex::new(&opt.text_pattern).context("Can't parse text pattern.")?;
+
+    let files_processed =
+        process_files(&files, &re_file, &re_text, &opt.replacement, opt.show_diff)?;
 
     if opt.replacement.is_some() {
         println!("Total replaced files: {}", files_processed);
