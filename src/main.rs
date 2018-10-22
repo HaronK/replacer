@@ -22,9 +22,9 @@ struct Opt {
     /// Replacement string (rust regex). Do only pattern matching if not specified.
     #[structopt(short = "r", long = "replace")]
     replacement: Option<String>,
-    /// Input file or starting directory. Searches in the current directory if not specified.
+    /// Input files and/or starting directories. Searches in the current directory if not specified.
     #[structopt(parse(from_os_str))]
-    input: Option<PathBuf>,
+    inputs: Vec<PathBuf>,
 }
 
 fn print_diff(left: &str, right: &str) {
@@ -118,20 +118,22 @@ fn main() -> Result<(), Error> {
 
     let re = Regex::new(&opt.pattern)?;
     let mut files = vec![];
-    if let Some(path_buf) = opt.input {
-        let path = path_buf.as_path().clone();
-        if path.exists() {
-            if let Some(path_str) = path.to_str() {
-                if path.is_file() {
-                    files.push(path_str.to_string());
-                } else if path.is_dir() {
-                    collect_files(path_str, &mut files);
-                } else {
-                    eprintln!("Unknown type of the file {:?}", path);
+    if !opt.inputs.is_empty() {
+        for path_buf in opt.inputs {
+            let path = path_buf.as_path().clone();
+            if path.exists() {
+                if let Some(path_str) = path.to_str() {
+                    if path.is_file() {
+                        files.push(path_str.to_string());
+                    } else if path.is_dir() {
+                        collect_files(path_str, &mut files);
+                    } else {
+                        println!("Unknown type of the file {:?}", path);
+                    }
                 }
+            } else {
+                println!("Path {:?} doesn't exist!", path);
             }
-        } else {
-            eprintln!("Path {:?} doesn't exist!", path);
         }
     } else {
         collect_files("./", &mut files);
