@@ -60,7 +60,7 @@ fn process_file(
         }
     }
 
-    let old_bytes = fs::read(path).context(format!("Cannot read from the file"))?;
+    let old_bytes = fs::read(path).context("Cannot read from the file")?;
     let old_text = String::from_utf8_lossy(&old_bytes);
 
     if let Some(replace_str) = replacement {
@@ -108,7 +108,7 @@ fn collect_files(dir: &str, files: &mut Vec<String>) {
 }
 
 fn process_files(
-    files: &Vec<String>,
+    files: &[String],
     re_file: &Option<Regex>,
     re_text: &Regex,
     replacement: &Option<String>,
@@ -137,7 +137,7 @@ fn main() -> Result<(), Error> {
     let mut files = vec![];
     if !opt.inputs.is_empty() {
         for path_buf in opt.inputs {
-            let path = path_buf.as_path().clone();
+            let path = path_buf.as_path();
             if path.exists() {
                 if let Some(path_str) = path.to_str() {
                     if path.is_file() {
