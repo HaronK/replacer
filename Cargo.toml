@@ -10,6 +10,6 @@ structopt = { version = "0.2", default-features = false }
 walkdir = "2"
 failure = "0.1"
 failure_derive = "0.1"
-rayon = "1.0"
 diff = "0.1"
 colored = "1.6"
+rayon-cond = { git = "https://github.com/cuviper/rayon-cond" }

@@ -1,9 +1,9 @@
-use colored::*;
 #[macro_use]
 extern crate failure;
 
+use colored::*;
 use failure::{Error, ResultExt};
-use rayon::prelude::*;
+use rayon_cond::CondIterator;
 use regex::Regex;
 use std::borrow::Cow::*;
 use std::fs;
@@ -43,6 +43,29 @@ fn print_diff(left: &str, right: &str) {
     }
 }
 
+fn show_matches_with_diff(path: &Path, re_text: &Regex, text: &str) -> usize {
+    println!("Matches in file: {:?}", path);
+
+    let mut matches_count = 0;
+    for pos in re_text.find_iter(&text) {
+        println!("{}", pos.as_str().red());
+
+        matches_count += 1;
+    }
+
+    if matches_count > 0 {
+        println!("Matches count: {}", matches_count);
+    }
+
+    matches_count
+}
+
+fn show_matches(path: &Path, re_text: &Regex, text: &str) -> usize {
+    let matches_count = re_text.find_iter(&text).count();
+    println!("{} matches in file: {:?}", matches_count, path);
+    matches_count
+}
+
 fn process_file(
     path: &Path,
     re_file: &Option<Regex>,
@@ -78,21 +101,13 @@ fn process_file(
             return Ok(1);
         }
     } else {
-        println!("Matches in file: {:?}", path);
+        let matches_count = if show_diff {
+            show_matches_with_diff(path, re_text, &old_text.into_owned())
+        } else {
+            show_matches(path, re_text, &old_text.into_owned())
+        };
 
-        let mut matches_count = 0;
-        for pos in re_text.find_iter(&old_text) {
-            if show_diff {
-                println!("{}", pos.as_str().red());
-            }
-
-            matches_count += 1;
-        }
-
-        if matches_count > 0 {
-            println!("Matches count: {}", matches_count);
-            return Ok(1);
-        }
+        return Ok(if matches_count > 0 { 1 } else { 0 });
     }
     Ok(0)
 }
@@ -114,8 +129,7 @@ fn process_files(
     replacement: &Option<String>,
     show_diff: bool,
 ) -> Result<usize, Error> {
-    let files_processed = files
-        .par_iter()
+    let files_processed = CondIterator::new(files, !show_diff)
         .map(|file| {
             process_file(Path::new(file), re_file, re_text, replacement, show_diff)
                 .context(format!("File: {:?}", file))
